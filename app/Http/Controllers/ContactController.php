@@ -5,6 +5,9 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Contact;
 use JD\Cloudder\Facades\Cloudder;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\File;
+
 
 class ContactController extends Controller
 {
@@ -55,7 +58,7 @@ class ContactController extends Controller
             'Foto'=>'required|mimes:jpeg,bmp,jpg,png|between:1, 6000',
         ]);
 
-
+        /*
         $image = $request->file('Foto');
         $name = $request->file('Foto')->getClientOriginalName();
         $image_name = $request->file('Foto')->getRealPath();;
@@ -66,14 +69,19 @@ class ContactController extends Controller
         $image_name_un= Cloudder::getPublicId();
       
         //save to uploads directory
-        $image->move(public_path("uploads"), $name);
+        $image->move(public_path("uploads"), $name);*/
+
+        $path = $request->file('Foto')->store('images', 's3');
+        Storage::disk('s3')->setVisibility($path, 'public');
+
         $contact=new Contact([
             'nombres'=>$request->get('nombres'),
             'apellidos'=>$request->get('apellidos'),
             'correo'=>$request->get('correo'),
             'telefono'=>$request->get('telefono'),
-            'Foto' => $image_url,
-            'Nombre_foto'=>$image_name_un]);
+            'Foto' => Storage::disk('s3')->url($path),
+            'Nombre_foto'=> basename($path)
+            ]);
 
         $contact->save();
         return redirect('/contacts')->with('success','Contacto registrado');
@@ -118,20 +126,24 @@ class ContactController extends Controller
         $this->validate($request,[
             'Foto'=>'required|mimes:jpeg,bmp,jpg,png|between:1, 6000',
         ]);
-        $image = $request->file('Foto');
+        /*$image = $request->file('Foto');
         $name = $request->file('Foto')->getClientOriginalName();
         $image_name = $request->file('Foto')->getRealPath();;
         Cloudder::upload($image_name, null);
         list($width, $height) = getimagesize($image_name);
         $image_url= Cloudder::show(Cloudder::getPublicId(), ["width" => $width, "height"=>$height]);
         $image_name_un= Cloudder::getPublicId();
-        $image->move(public_path("uploads"), $name);
+        $image->move(public_path("uploads"), $name);*/
          //elimina el dato de cloudinary--------------------------
+
+         $path = $request->file('Foto')->store('images', 's3');
+         Storage::disk('s3')->setVisibility($path, 'public');
+
          $valoress = contact::where('id',$id)
          ->firstOr(['Nombre_foto'],function(){});
          //da formato
-         $nombre_foto =$valoress->Nombre_foto;
-         Cloudder::destroyImages($nombre_foto);   
+         $keynamenotjson=$valoress->Nombre_foto;
+         Storage::disk('s3')->delete($keynamenotjson);   
 
 
         $request->validate([
@@ -145,8 +157,8 @@ class ContactController extends Controller
         $contact->apellidos=$request->get('apellidos');
         $contact->correo=$request->get('correo');
         $contact->telefono=$request->get('telefono');
-        $contact->Foto=$image_url;
-        $contact->Nombre_foto=$image_name_un;
+        $contact->Foto=Storage::disk('s3')->url($path);
+        $contact->Nombre_foto=basename($path);
         $contact->save();
         return redirect('/contacts')->with('success','Contacto Actualizado');
     }
@@ -164,7 +176,7 @@ class ContactController extends Controller
     ->firstOr(['Nombre_foto'],function(){});
     $nombre_foto =$valoress->Nombre_foto;
     //elimina en cloudinary
-    Cloudder::destroyImages($nombre_foto);
+    Storage::disk('s3')->delete($nombre_foto);
 
     //elimina DB
     contact::destroy($id);
